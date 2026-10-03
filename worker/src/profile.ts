@@ -7,6 +7,35 @@ export interface CachedProfile {
   avatar: string;
 }
 
+const MAX_AVATAR_BYTES = 2_000_000;
+
+async function readAvatar(image: Response): Promise<Buffer | null> {
+  if (!image.body) return null;
+  const reader = image.body.getReader();
+  let complete = false;
+  try {
+    if (Number(image.headers.get("content-length")) >= MAX_AVATAR_BYTES) return null;
+    
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        complete = true;
+        return Buffer.concat(chunks, size);
+      }
+      
+      size += value.byteLength;
+      if (size >= MAX_AVATAR_BYTES) return null;
+      
+      chunks.push(value);
+    }
+  } finally {
+    if (!complete) await reader.cancel();
+    reader.releaseLock();
+  }
+}
+
 export async function fetchProfile(username: string, token?: string): Promise<CachedProfile> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
@@ -46,10 +75,14 @@ export async function fetchProfile(username: string, token?: string): Promise<Ca
     if (url.hostname === "avatars.githubusercontent.com") {
       url.searchParams.set("s", "1024");
       const image = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      const mime = parseContentType(image.headers.get("content-type") || "").type;
-      if (image.ok && ["image/png", "image/jpeg", "image/webp"].includes(mime || "")) {
-        const bytes = Buffer.from(await image.arrayBuffer());
-        if (bytes.length < 2_000_000) avatar = `data:${mime};base64,${bytes.toString("base64")}`;
+      try {
+        const mime = parseContentType(image.headers.get("content-type") || "").type;
+        if (image.ok && ["image/png", "image/jpeg", "image/webp"].includes(mime)) {
+          const bytes = await readAvatar(image);
+          if (bytes) avatar = `data:${mime};base64,${bytes.toString("base64")}`;
+        }
+      } finally {
+        if (image.body && !image.body.locked) await image.body.cancel();
       }
     }
   } catch {
