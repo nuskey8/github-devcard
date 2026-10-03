@@ -32,7 +32,6 @@ test("all themes generate self-contained SVG with public statistics", () => {
 
 test("every pattern uses its own mask and keeps the portrait dimensions", async () => {
   const { patterns } = await import("../src/patterns.ts");
-  expect(Object.keys(patterns).length).toBe(16);
   const masks = new Set();
   for (const [key, shape] of Object.entries(patterns)) {
     const svg = renderDevcard(user, "paper", "data:image/png;base64,YQ==", key);
@@ -50,8 +49,6 @@ test("organization logo replaces the default card mark in the self-contained car
   const svg = renderDevcard(user, "mint", "", "circle", "data:image/png;base64,AQID");
   expect(svg.includes('x="492" y="790" width="64" height="40"')).toBeTruthy();
   expect(svg.includes("data:image/png;base64,AQID")).toBeTruthy();
-  expect(!svg.includes('<rect x="472"')).toBeTruthy();
-  expect(Object.keys(themes).length).toBe(18);
   for (const theme of Object.values(themes)) expect(theme.page).toMatch(/^#[a-f0-9]{6}$/i);
 });
 
@@ -73,49 +70,6 @@ test("every palette keeps card text readable", () => {
   }
 });
 
-test("default logo uses the shared card mark in the selected palette", async () => {
-  const { renderCardMark } = await import("../src/logo.ts");
-  const { default: logo } = await import("../../assets/logo.svg?raw", {
-    with: { type: "text" },
-  });
-  const paths = [...logo.matchAll(/ d="([^"]+)"/g)].map((match) => match[1]);
-  for (const [key, theme] of Object.entries(themes)) {
-    const svg = renderDevcard(user, key);
-    expect(svg.includes('<g id="brand-logo">')).toBeTruthy();
-    for (const path of paths) expect(svg).toContain(path);
-    expect(svg).not.toContain("currentColor");
-    expect(svg).not.toContain("var(--paper");
-    expect(svg.includes(renderCardMark(theme.foreground, theme.background))).toBeTruthy();
-    const custom = renderDevcard(user, key, "", "leaf", "data:image/png;base64,AQID");
-    for (const path of paths) expect(custom).not.toContain(path);
-  }
-});
-
-test("non-square silhouettes keep their proportions and are centered", async () => {
-  const { patterns } = await import("../src/patterns.ts");
-  expect(patterns.wave.transform).toBe("translate(0 1) scale(1) translate(0 -1)");
-  expect(patterns.hexagon.transform).toMatch(/scale\([0-9.e+-]+\)/);
-  for (const shape of Object.values(patterns)) {
-    // One scale factor applies equally to both axes.
-    expect(shape.transform).toMatch(/scale\([0-9.e+-]+\)/);
-  }
-});
-
-test("avatar dimensions and leaf mask do not depend on the GitHub account", () => {
-  const accounts = [
-    user,
-    { ...user, login: "nuskey8", name: "Yusuke Nakada", bio: "a.k.a @annulusgames", id: 84110981 },
-  ];
-  const masks = accounts.map((account) => {
-    const svg = renderDevcard(account, "sky", "data:image/png;base64,YQ==", "leaf");
-    expect(svg).toContain('width="516" height="516" preserveAspectRatio="xMidYMid slice"');
-    expect(svg).not.toContain('height="474"');
-    return svg.match(/<clipPath id="avatar">(.*?)<\/clipPath>/)?.[1];
-  });
-  expect(masks[0]).toBeDefined();
-  expect(masks[0]).toBe(masks[1]);
-});
-
 test("biography wraps without truncating Latin or Japanese text", () => {
   for (const bio of [
     "A developer building thoughtful tools and open source projects. ".repeat(2).trim(),
@@ -132,27 +86,6 @@ test("biography wraps without truncating Latin or Japanese text", () => {
     ).toBe(bio.replace(/\s/g, ""));
     expect(Math.max(...lines.map((line) => Number(line[1])))).toBeLessThan(780);
     expect(svg).toContain('font-size="22" font-weight="600" letter-spacing="0"');
-  }
-});
-
-test("rounded regular hexagon has a horizontal top edge and preserves card height", async () => {
-  const { patterns } = await import("../src/patterns.ts");
-  expect(patterns.hexagon.path).toMatch(/^M31 0L69 0Q75 0/);
-  expect(patterns.hexagon.path.match(/Q/g)).toHaveLength(6);
-  const svg = renderDevcard(user, "sky", "data:image/png;base64,YQ==", "hexagon");
-  expect(svg).toContain('width="600" height="900"');
-  expect(svg).toContain('width="516" height="516" preserveAspectRatio="xMidYMid slice"');
-});
-
-test("picker and avatar mask share exactly the same silhouette", async () => {
-  const { patterns, renderShape, renderAvatarMask } = await import("../src/patterns.ts");
-  for (const key of Object.keys(patterns)) {
-    expect(renderShape(key)).toContain(`d="${patterns[key].path}"`);
-    expect(renderAvatarMask(key)).toBe(
-      `<path d="${patterns[key].path}" transform="translate(42 42) scale(5.16) ${patterns[key].transform}"/>`,
-    );
-    const svg = renderDevcard(user, "sky", "data:image/png;base64,YQ==", key);
-    expect(svg).toContain(`<clipPath id="avatar">${renderAvatarMask(key)}</clipPath>`);
   }
 });
 

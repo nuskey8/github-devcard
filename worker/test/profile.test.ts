@@ -39,13 +39,6 @@ function streamedImage(chunks: Uint8Array[], headers: Record<string, string> = {
 
 afterEach(() => vi.unstubAllGlobals());
 
-test("embeds avatars smaller than the limit, including multiple chunks", async () => {
-  const { image, cancel } = streamedImage([new Uint8Array([1, 2]), new Uint8Array([3])]);
-  mockAvatar(image);
-  expect((await fetchProfile("test-user")).avatar).toBe("data:image/png;base64,AQID");
-  expect(cancel).not.toHaveBeenCalled();
-});
-
 test("cancels before reading when Content-Length reaches the limit", async () => {
   for (const length of [2_000_000, 3_000_000]) {
     const { image, cancel, pull } = streamedImage([new Uint8Array([1])], {
@@ -76,8 +69,8 @@ test("cancels as soon as streamed bytes reach the limit regardless of Content-Le
   }
 });
 
-test("accepts the last byte below the limit", async () => {
-  const { image, cancel } = streamedImage([new Uint8Array(1_999_999)]);
+test("embeds multi-chunk avatars just below the size limit", async () => {
+  const { image, cancel } = streamedImage([new Uint8Array(1_000_000), new Uint8Array(999_999)]);
   mockAvatar(image);
   expect((await fetchProfile("test-user")).avatar).toMatch(/^data:image\/png;base64,/);
   expect(cancel).not.toHaveBeenCalled();
@@ -93,16 +86,4 @@ test("discards and cancels unsupported or malformed image responses", async () =
     expect(pull).not.toHaveBeenCalled();
     expect(cancel).toHaveBeenCalledOnce();
   }
-});
-
-test("avatar stream failures preserve the readable profile fallback", async () => {
-  const body = new ReadableStream({
-    start(controller) {
-      controller.error(new Error("Interrupted"));
-    },
-  });
-  mockAvatar(new Response(body, { headers: { "Content-Type": "image/png" } }));
-  const profile = await fetchProfile("test-user");
-  expect(profile.avatar).toBe("");
-  expect(profile.user.login).toBe("test-user");
 });

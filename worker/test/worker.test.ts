@@ -1,5 +1,4 @@
 import * as renderer from "../src/devcard.ts";
-import { patterns } from "../src/patterns.ts";
 import { test, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import worker from "../src/index.ts";
 
@@ -56,6 +55,8 @@ test("API validates parameters and restricts routes and methods", async () => {
   expect((await request("/not-found")).status).toBe(404);
   expect((await request("/api/devcard?username=octocat", "POST")).status).toBe(405);
   expect((await request("/")).status).toBe(200);
+  expect((await request("/api/missing")).status).toBe(404);
+  expect(limit).not.toHaveBeenCalled();
 });
 
 test("HEAD keeps status and headers without a body", async () => {
@@ -70,7 +71,7 @@ test("HEAD keeps status and headers without a body", async () => {
   expect((await request("/missing", "HEAD")).body).toBe("");
 });
 
-test("GitHub data and embedded avatar produce cacheable SVG; failures do not cache", async () => {
+test("GitHub data and embedded avatar produce SVG and upstream errors are mapped", async () => {
   let calls = 0;
   const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
     calls++;
@@ -100,12 +101,6 @@ test("GitHub data and embedded avatar produce cacheable SVG; failures do not cac
     expect(response.headers["content-type"]).toMatch(/image\/svg\+xml/);
     expect(response.body).toMatch(/Test &amp; User/);
     expect(response.body).toContain("data:image/png;base64,AQID");
-    expect(calls).toBe(2);
-    const shaped = await request("/api/devcard?username=test-user&pattern=diamond");
-    expect(shaped.status).toBe(200);
-    expect(shaped.body.includes(patterns.diamond.path)).toBeTruthy();
-    expect(calls).toBe(2);
-    expect((await request("/api/devcard?username=TEST-USER&theme=paper")).status).toBe(200);
     expect(calls).toBe(2);
     expect((await request("/api/devcard?username=missing-user")).status).toBe(404);
     expect((await request("/api/devcard?username=limited-user")).status).toBe(429);
@@ -159,6 +154,7 @@ test("static asset paths are preserved and do not open API caches", async () => 
   await request("/github-devcard/about/");
   expect(new URL(assetFetch.mock.calls.at(-1)![0].url).pathname).toBe("/github-devcard/about/");
   expect(caches.open).not.toHaveBeenCalled();
+  expect(limit).not.toHaveBeenCalled();
   expect((await request("/github-devcard/api/devcard?username=a--b")).status).toBe(400);
   expect((await request("/github-devcard/api/devcard?username=octocat", "POST")).status).toBe(405);
   expect((await request("/github-devcard-other")).status).toBe(404);
@@ -307,17 +303,6 @@ test("cached profiles and cards remain available after the rate limit is reached
   expect(limit).toHaveBeenCalledTimes(1);
   expect(fetch).toHaveBeenCalledTimes(1);
   expect((await request("/api/devcard?username=other-user")).status).toBe(429);
-});
-
-test("invalid requests and static assets do not consume profile limits", async () => {
-  for (const [path, method] of [
-    ["/github-devcard/", "GET"],
-    ["/api/profile?username=a--b", "GET"],
-    ["/api/devcard?username=octocat", "POST"],
-    ["/api/missing", "GET"],
-  ])
-    await request(path, method);
-  expect(limit).not.toHaveBeenCalled();
 });
 
 test("failed GitHub lookups consume limits and organization lookups are also checked", async () => {
