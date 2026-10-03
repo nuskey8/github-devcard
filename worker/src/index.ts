@@ -19,6 +19,16 @@ export default {
         const cache = await caches.open("github-profiles-v1");
         const cached = await cache.match(key);
         if (cached) return cached.json() as Promise<CachedProfile>;
+        // Only cache misses consume GitHub's API quota. Trust Cloudflare's IP
+        // header, rather than client-controlled forwarding headers.
+        const { success } = await env.PROFILE_RATE_LIMITER.limit({
+          key: `profile:${request.headers.get("CF-Connecting-IP") || "unknown"}`,
+        });
+        if (!success)
+          throw Object.assign(new Error("Too many profile requests. Try again in a minute."), {
+            status: 429,
+            retryAfter: 60,
+          });
         const profile = await fetchProfile(username.toLowerCase(), env.GITHUB_TOKEN);
         ctx.waitUntil(
           cache

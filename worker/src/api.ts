@@ -71,7 +71,8 @@ export async function handleDevcardRequest(
     );
     return head ? new Response(null, { headers }) : response;
   } catch (caught) {
-    const error = caught as Error & { status?: number };
+    const error = caught as Error & { status?: number; retryAfter?: number };
+    if (error.retryAfter) headers.set("Retry-After", String(error.retryAfter));
     headers.set("Cache-Control", "no-store");
     headers.set("Content-Type", "application/json; charset=utf-8");
 

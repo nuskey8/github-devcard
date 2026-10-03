@@ -15,6 +15,10 @@ export default defineConfig({
     env: {
       ASSETS: bindings.assets(),
       GITHUB_TOKEN: bindings.secret(),
+      PROFILE_RATE_LIMITER: bindings.rateLimit({
+        namespace: "1001",
+        simple: { limit: 20, period: 60 },
+      }),
     },
     assets: {
       runWorkerFirst: ["/github-devcard/api/*", "/api/*"],

@@ -4,6 +4,7 @@ import { test, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import worker from "../src/index.ts";
 
 const cachedProfiles = new Map<string, Response>();
+const limit = vi.fn(async (_options: { key: string }) => ({ success: true }));
 const cache = {
   match: vi.fn(async (key: Request) => cachedProfiles.get(key.url)?.clone()),
   put: vi.fn(async (key: Request, value: Response) => {
@@ -21,14 +22,15 @@ const assetFetch = vi.fn(async (req: Request) => {
 beforeEach(() => {
   cachedProfiles.clear();
   vi.clearAllMocks();
+  limit.mockResolvedValue({ success: true });
   vi.stubGlobal("caches", { open: vi.fn(async () => cache) });
 });
 
-async function request(url: string, method = "GET", token = "") {
+async function request(url: string, method = "GET", token = "", headers?: HeadersInit) {
   const tasks: Promise<unknown>[] = [];
   const response: Response = await Reflect.apply(worker.fetch, worker, [
-    new Request(new URL(url, "http://localhost"), { method }),
-    { ASSETS: { fetch: assetFetch }, GITHUB_TOKEN: token },
+    new Request(new URL(url, "http://localhost"), { method, headers }),
+    { ASSETS: { fetch: assetFetch }, GITHUB_TOKEN: token, PROFILE_RATE_LIMITER: { limit } },
     { waitUntil: (task: Promise<unknown>) => tasks.push(task) },
   ]);
   await Promise.all(tasks);
@@ -252,4 +254,90 @@ test("SVG cache normalizes defaults and usernames, serves HEAD, and expires inde
   expect(landscapeHead.headers).toEqual(landscape.headers);
   expect(render).toHaveBeenCalledTimes(4);
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+test("rate limits uncached profiles by Cloudflare IP before contacting GitHub", async () => {
+  const upstream = vi.fn(async () => new Response("{}", { status: 404 }));
+  vi.stubGlobal("fetch", upstream);
+  limit.mockResolvedValue({ success: false });
+  for (const path of ["/api/profile", "/github-devcard/api/devcard"]) {
+    for (const method of ["GET", "HEAD"]) {
+      const response = await request(`${path}?username=limited-user`, method, "", {
+        "CF-Connecting-IP": "192.0.2.1",
+        "X-Forwarded-For": "198.51.100.1",
+      });
+      expect(response.status).toBe(429);
+      expect(response.headers["retry-after"]).toBe("60");
+      expect(response.headers["cache-control"]).toBe("no-store");
+      if (method === "HEAD") expect(response.body).toBe("");
+      else expect(JSON.parse(response.body).error).toContain("Too many profile requests");
+    }
+  }
+  expect(limit).toHaveBeenCalledWith({ key: "profile:192.0.2.1" });
+  expect(upstream).not.toHaveBeenCalled();
+  expect(cache.put).not.toHaveBeenCalled();
+  await request("/api/profile?username=limited-user");
+  expect(limit).toHaveBeenLastCalledWith({ key: "profile:unknown" });
+});
+
+test("cached profiles and cards remain available after the rate limit is reached", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json({
+        login: "cached-user",
+        name: "Cached User",
+        bio: null,
+        id: 1,
+        public_repos: 1,
+        followers: 1,
+        created_at: "2020-01-01T00:00:00Z",
+      }),
+    ),
+  );
+  expect((await request("/api/devcard?username=cached-user")).status).toBe(200);
+  expect(limit).toHaveBeenCalledTimes(1);
+  limit.mockResolvedValue({ success: false });
+  for (const path of [
+    "/api/profile?username=cached-user",
+    "/api/devcard?username=cached-user",
+    "/api/devcard?username=cached-user&theme=paper",
+  ])
+    expect((await request(path)).status).toBe(200);
+  expect(limit).toHaveBeenCalledTimes(1);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect((await request("/api/devcard?username=other-user")).status).toBe(429);
+});
+
+test("invalid requests and static assets do not consume profile limits", async () => {
+  for (const [path, method] of [
+    ["/github-devcard/", "GET"],
+    ["/api/profile?username=a--b", "GET"],
+    ["/api/devcard?username=octocat", "POST"],
+    ["/api/missing", "GET"],
+  ])
+    await request(path, method);
+  expect(limit).not.toHaveBeenCalled();
+});
+
+test("failed GitHub lookups consume limits and organization lookups are also checked", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response("{}", { status: 404 })),
+  );
+  for (let i = 0; i < 2; i++)
+    expect((await request("/api/profile?username=missing-user")).status).toBe(404);
+  expect(limit).toHaveBeenCalledTimes(2);
+  expect(fetch).toHaveBeenCalledTimes(2);
+
+  cachedProfiles.set(
+    "http://localhost/__profile-cache/v1/cached-user",
+    Response.json({
+      user: { login: "cached-user" },
+      avatar: "",
+    }),
+  );
+  limit.mockResolvedValue({ success: false });
+  expect((await request("/api/devcard?username=cached-user&org=other-org")).status).toBe(429);
+  expect(fetch).toHaveBeenCalledTimes(2);
 });
