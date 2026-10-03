@@ -1,0 +1,35 @@
+{
+  "name": "github-devcard",
+  "private": true,
+  "license": "Apache-2.0",
+  "workspaces": [
+    "site",
+    "worker"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "vp run --filter @github-devcard/site --filter @github-devcard/worker --parallel --no-cache --log labeled dev",
+    "dev:site": "bun run --cwd site dev",
+    "dev:worker": "bun run --cwd worker dev",
+    "build": "bun run --cwd site build && bun run --cwd worker build",
+    "typecheck": "bun run --cwd worker typecheck && bun run --cwd site typecheck",
+    "test": "bun run --cwd worker test",
+    "test:watch": "bun run --cwd worker test:watch",
+    "deploy": "bun run --cwd site build && bun run --cwd worker deploy",
+    "deploy:check": "bun run --cwd site build && bun run --cwd worker deploy:check",
+    "cf:types": "bun run --cwd worker cf:types",
+    "lint": "vp lint",
+    "lint:fix": "vp lint --fix",
+    "fmt": "vp fmt",
+    "fmt:check": "vp fmt --check",
+    "check": "bun run cf:types && vp check"
+  },
+  "devDependencies": {
+    "vite-plus": "^1.0.0"
+  },
+  "engines": {
+    "bun": ">=1.4.2",
+    "node": ">=22.18"
+  },
+  "packageManager": "bun@1.4.2"
+}

@@ -1,0 +1,41 @@
+{
+  "name": "@github-devcard/worker",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./themes": "./src/themes.ts",
+    "./patterns": "./src/patterns.ts",
+    "./validation": "./src/validation.ts",
+    "./devcard": "./src/devcard.ts",
+    "./profile": "./src/profile.ts"
+  },
+  "scripts": {
+    "dev": "bun run cf:types && cf dev",
+    "build": "bun run typecheck && cf build",
+    "typecheck": "bun run cf:types && tsc --noEmit",
+    "cf:types": "cf workers types",
+    "deploy": "bun run typecheck && cf deploy",
+    "deploy:check": "bun run typecheck && cf deploy --dry-run",
+    "test": "vp test",
+    "test:watch": "vp test watch",
+    "lint": "vp lint",
+    "lint:fix": "vp lint --fix",
+    "fmt": "vp fmt",
+    "fmt:check": "vp fmt --check",
+    "check": "bun run cf:types && vp check"
+  },
+  "dependencies": {
+    "content-type": "^3.1.1",
+    "string-pixel-width": "^1.11.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^2.0.0-beta.sha-52b0dc0e9",
+    "@types/node": "^26.6.4",
+    "@types/string-pixel-width": "^1.11.0",
+    "cf": "1.0.0-beta.12",
+    "typescript": "^7.0.2",
+    "vite-plus": "^1.0.0"
+  }
+}
