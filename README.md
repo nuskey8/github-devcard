@@ -22,7 +22,7 @@ To adjust the image size in your README, select HTML, choose a width, and copy t
 
 ## About the author
 
-<img src="https://www.nuskey.md/github-devcard/api/devcard?username=nuskey8&theme=github-light&pattern=leaf" alt="GitHub DevCard" width="300"/>
+<img src="https://www.nuskey.md/github-devcard/api/devcard?username=nuskey8&amp;theme=github-light&amp;pattern=leaf&amp;layout=landscape&amp;stats=repos,followers,stars,prs,issues,commits" alt="nuskey8&apos;s GitHub DevCard" width="450">
 
 GitHub DevCard is created by [@nuskey8](https://github.com/nuskey8). Consider supporting this project on [GitHub Sponsors](https://github.com/sponsors/nuskey8) or [Ko-fi](https://ko-fi.com/nuskey8)!
 
