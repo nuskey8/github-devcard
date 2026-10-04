@@ -1,6 +1,7 @@
 import * as renderer from "../src/devcard.ts";
 import { test, expect, vi, afterEach, beforeEach } from "vite-plus/test";
 import worker from "../src/index.ts";
+import { readFile } from "node:fs/promises";
 
 const cachedProfiles = new Map<string, Response>();
 const limit = vi.fn(async (_options: { key: string }) => ({ success: true }));
@@ -11,12 +12,21 @@ const cache = {
   }),
 };
 const assetFetch = vi.fn(async (req: Request) => {
+  const path = new URL(req.url).pathname;
+  if (path.startsWith("/github-devcard/fonts/")) {
+    return new Response(
+      await readFile(
+        new URL(`../../site/public${path.replace("/github-devcard", "")}`, import.meta.url),
+      ),
+    );
+  }
   const home = new URL(req.url).pathname === "/";
   return new Response(req.method === "HEAD" ? null : home ? "<!doctype html>" : "Not found", {
     status: home ? 200 : 404,
     headers: { "Content-Type": "text/html;charset=utf-8" },
   });
 });
+const assets = { fetch: assetFetch };
 
 beforeEach(() => {
   cachedProfiles.clear();
@@ -29,12 +39,16 @@ async function request(url: string, method = "GET", token = "", headers?: Header
   const tasks: Promise<unknown>[] = [];
   const response: Response = await Reflect.apply(worker.fetch, worker, [
     new Request(new URL(url, "http://localhost"), { method, headers }),
-    { ASSETS: { fetch: assetFetch }, GITHUB_TOKEN: token, PROFILE_RATE_LIMITER: { limit } },
+    { ASSETS: assets, GITHUB_TOKEN: token, PROFILE_RATE_LIMITER: { limit } },
     { waitUntil: (task: Promise<unknown>) => tasks.push(task) },
   ]);
   await Promise.all(tasks);
+  const responseHeaders: Record<string, string> = {};
+  response.headers.forEach((value, name) => {
+    responseHeaders[name] = value;
+  });
   return {
-    headers: Object.fromEntries(response.headers),
+    headers: responseHeaders,
     status: response.status,
     body: await response.text(),
   };

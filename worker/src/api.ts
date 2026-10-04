@@ -1,5 +1,6 @@
 import { devcardQuerySchema, githubUsernameSchema } from "./validation.ts";
 import { renderDevcard } from "./devcard.ts";
+import type { CardTypographyLoader } from "./devcard.ts";
 import type { CachedProfile } from "./profile.ts";
 
 export async function handleDevcardRequest(
@@ -7,6 +8,7 @@ export async function handleDevcardRequest(
   profile: (username: string) => Promise<CachedProfile>,
   cache: Cache,
   ctx: Pick<ExecutionContext, "waitUntil">,
+  loadTypography: CardTypographyLoader,
 ): Promise<Response> {
   const headers = new Headers({ "X-Content-Type-Options": "nosniff" });
   const head = req.method === "HEAD";
@@ -38,7 +40,7 @@ export async function handleDevcardRequest(
       throw Object.assign(new Error(parsed.error.issues[0].message), { status: 400 });
 
     const { username, theme, pattern, org, layout } = parsed.data;
-    const cacheUrl = new URL("/__devcard-cache/v1", url);
+    const cacheUrl = new URL("/__devcard-cache/v2", url);
     cacheUrl.search = new URLSearchParams({
       username: username.toLowerCase(),
       theme,
@@ -61,9 +63,13 @@ export async function handleDevcardRequest(
       "default-src 'none'; img-src data:; style-src 'unsafe-inline'",
     );
 
-    const response = new Response(renderDevcard(user, theme, avatar, pattern, logo, layout), {
-      headers,
-    });
+    const typography = await loadTypography(`${user.login} ${user.name || ""} ${user.bio || ""}`);
+    const response = new Response(
+      renderDevcard(user, theme, avatar, pattern, logo, layout, typography),
+      {
+        headers,
+      },
+    );
     ctx.waitUntil(
       cache
         .put(cacheKey, response.clone())

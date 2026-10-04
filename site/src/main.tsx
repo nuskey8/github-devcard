@@ -5,6 +5,7 @@ import {
   cardLayouts,
   escapeXml,
   renderDevcard,
+  loadCardTypography,
   type CardLayout,
 } from "@github-devcard/worker/devcard";
 import type { CachedProfile } from "@github-devcard/worker/profile";
@@ -119,8 +120,12 @@ function App() {
         logo = (await loadProfile(nextOrg.trim(), controller.signal)).avatar;
         if (!logo) throw new Error("Unable to fetch the organization logo.");
       }
+      const typography = await loadCardTypography(
+        `${user.login} ${user.name || ""} ${user.bio || ""}`,
+      );
+      controller.signal.throwIfAborted();
       const blob = new Blob(
-        [renderDevcard(user, nextTheme, avatar, nextPattern, logo, nextLayout)],
+        [renderDevcard(user, nextTheme, avatar, nextPattern, logo, nextLayout, typography)],
         {
           type: "image/svg+xml",
         },

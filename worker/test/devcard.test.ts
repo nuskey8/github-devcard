@@ -1,5 +1,38 @@
-import { test, expect } from "vite-plus/test";
-import { escapeXml, renderDevcard, themes } from "../src/devcard.ts";
+import { test, expect, beforeAll, vi } from "vite-plus/test";
+import {
+  escapeXml,
+  createCardTypographyLoader,
+  type CardTypography,
+  renderDevcard as renderWithFonts,
+  themes,
+  type GitHubUser,
+  type CardLayout,
+} from "../src/devcard.ts";
+import { readFile } from "node:fs/promises";
+
+async function readFont(path: string): Promise<ArrayBuffer> {
+  const bytes = await readFile(
+    new URL(`../../site/public${path.replace("/github-devcard", "")}`, import.meta.url),
+  );
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+}
+const loadTestTypography = createCardTypographyLoader(readFont);
+
+let typography: CardTypography;
+beforeAll(async () => {
+  typography = await loadTestTypography("日本語");
+});
+
+function renderDevcard(
+  user: GitHubUser,
+  theme?: string,
+  avatar?: string,
+  pattern?: string,
+  logo?: string,
+  layout?: CardLayout,
+) {
+  return renderWithFonts(user, theme, avatar, pattern, logo, layout, typography);
+}
 
 const user = {
   login: "octocat",
@@ -76,7 +109,13 @@ test("biography wraps without truncating Latin or Japanese text", () => {
     "開発者として使いやすいソフトウェアを作っています。".repeat(5),
   ]) {
     const svg = renderDevcard({ ...user, name: "Test", bio });
-    const lines = [...svg.matchAll(/<tspan x="44" y="([\d.]+)">([^<]*)<\/tspan>/g)];
+    const lines = [
+      ...svg.matchAll(
+        /<g aria-label="([^"]*)" data-x="44" data-y="([\d.]+)" data-font-size="[\d.]+" fill=/g,
+      ),
+    ]
+      .map((line) => [line[0], line[2], line[1]])
+      .filter((line) => Number(line[1]) >= 717 && Number(line[1]) < 790);
     expect(lines.length).toBeGreaterThan(1);
     expect(
       lines
@@ -85,7 +124,7 @@ test("biography wraps without truncating Latin or Japanese text", () => {
         .replace(/\s/g, ""),
     ).toBe(bio.replace(/\s/g, ""));
     expect(Math.max(...lines.map((line) => Number(line[1])))).toBeLessThan(780);
-    expect(svg).toContain('font-size="22" font-weight="600" letter-spacing="0"');
+    expect(svg).toContain('aria-label="@octocat" data-x="44" data-y="678" data-font-size="22"');
   }
 });
 
@@ -105,8 +144,12 @@ test("landscape cards keep avatars square and wrap biographies in the right colu
     expect(svg).toContain('width="380" height="380" preserveAspectRatio="xMidYMid slice"');
     expect(svg).toContain(`translate(42 72) scale(3.8) ${patterns[pattern].transform}`);
     expect(svg).toContain('x="802" y="76" width="64" height="40"');
-    expect(svg).toContain('x="866" y="515" text-anchor="end" font-size="16"');
-    const lines = [...svg.matchAll(/<tspan x="480" y="([\d.]+)">([^<]*)<\/tspan>/g)];
+    expect(svg).toContain('data-x="866" data-y="515" data-font-size="16"');
+    const lines = [
+      ...svg.matchAll(
+        /<g aria-label="([^"]*)" data-x="480" data-y="([\d.]+)" data-font-size="[\d.]+" fill=/g,
+      ),
+    ].map((line) => [line[0], line[2], line[1]]);
     expect(lines.length).toBeGreaterThan(1);
     expect(lines.map((line) => line[2]).join("")).toBe(bio);
     expect(Math.max(...lines.map((line) => Number(line[1])))).toBeLessThan(412);
@@ -117,8 +160,52 @@ test("landscape cards keep avatars square and wrap biographies in the right colu
 test("landscape biography uses glyph widths rather than wrapping narrow letters early", () => {
   const bio = "i".repeat(60);
   const svg = renderDevcard({ ...user, bio }, "sky", "", "leaf", "", "landscape");
-  const lines = [...svg.matchAll(/<tspan x="480" y="([\d.]+)">([^<]*)<\/tspan>/g)];
+  const lines = [
+    ...svg.matchAll(
+      /<g aria-label="([^"]*)" data-x="480" data-y="([\d.]+)" data-font-size="[\d.]+" fill=/g,
+    ),
+  ].map((line) => [line[0], line[2], line[1]]);
   expect(lines).toHaveLength(1);
   expect(lines[0][2]).toBe(bio);
-  expect(svg).toContain('<text font-size="22"');
+  expect(svg).toContain('data-font-size="22"');
+});
+
+test("all card text uses self-contained outlines with escaped accessible labels", () => {
+  const svg = renderDevcard({ ...user, name: "日本語 & Grotesk", bio: "Hello 日本語" });
+  expect(svg).not.toMatch(/<text\b|<tspan\b|font-family|@font-face/);
+  expect(svg).toContain('aria-label="日本語 &amp; Grotesk"');
+  expect(svg).toContain('aria-label="Hello 日本語"');
+  expect(svg).not.toContain("NaN");
+  expect(svg).not.toContain("Infinity");
+  expect(renderDevcard({ ...user, name: "日本語 & Grotesk", bio: "Hello 日本語" })).toBe(svg);
+});
+
+test("font loads are shared and Japanese fonts are only loaded when needed", async () => {
+  const bytes = vi.fn(readFont);
+  const load = createCardTypographyLoader(bytes);
+  const [first, second] = await Promise.all([load("Hello"), load("World")]);
+  expect(bytes).toHaveBeenCalledTimes(2);
+  expect(first.text("Grotesk", 0, 30, 22)).toBe(second.text("Grotesk", 0, 30, 22));
+  expect(bytes.mock.calls.every(([path]) => path.includes("OverusedGrotesk-"))).toBe(true);
+
+  const japanese = await load("こんにちは");
+  expect(bytes).toHaveBeenCalledTimes(4);
+  await load("日本語");
+  expect(bytes).toHaveBeenCalledTimes(4);
+  expect(japanese.width("日本語", 22)).toBe(66);
+  expect(japanese.text("日", 0, 30, 22)).not.toBe(first.text("日", 0, 30, 22));
+  // Adding Japanese coverage must not change the Latin font or its metrics.
+  expect(japanese.text("Grotesk", 0, 30, 22)).toBe(first.text("Grotesk", 0, 30, 22));
+  expect(japanese.width("Grotesk", 22)).toBe(first.width("Grotesk", 22));
+});
+
+test("failed font downloads can be retried", async () => {
+  const bytes = vi.fn(readFont).mockRejectedValueOnce(new Error("Font download failed"));
+  const load = createCardTypographyLoader(bytes);
+  await expect(load("Hello")).rejects.toThrow("Font download failed");
+  const typography = await load("Hello");
+  expect(typography.width("Hello", 22)).toBeGreaterThan(0);
+  expect(typography.text('A & "B" <C>', 0, 30, 22)).toContain(
+    'aria-label="A &amp; &quot;B&quot; &lt;C&gt;"',
+  );
 });

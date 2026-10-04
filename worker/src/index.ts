@@ -1,17 +1,17 @@
 import { handleDevcardRequest } from "./api.ts";
 import { fetchProfile, type CachedProfile } from "./profile.ts";
+import { loadCardTypography } from "./devcard.ts";
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/github-devcard/api/")) {
       url.pathname = url.pathname.slice("/github-devcard".length);
-      request = new Request(url, request);
     }
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
     const cardCache = await caches.open("github-devcards-v1");
     return handleDevcardRequest(
-      request,
+      new Request(url, request),
       async (username) => {
         const key = new Request(
           new URL(`/__profile-cache/v1/${username.toLowerCase()}`, url.origin),
@@ -44,6 +44,12 @@ export default {
       },
       cardCache,
       ctx,
+      (value) =>
+        loadCardTypography(value, async (path) => {
+          const response = await env.ASSETS.fetch(new Request(new URL(path, url.origin)));
+          if (!response.ok) throw new Error("Unable to load card fonts.");
+          return response.arrayBuffer();
+        }),
     );
   },
 } satisfies ExportedHandler<Cloudflare.Env>;
