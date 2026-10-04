@@ -64,6 +64,10 @@ test("API validates parameters and restricts routes and methods", async () => {
     "/api/devcard?username=octocat&org=a--b",
     "/api/devcard?username=octocat&layout=bad",
     "/api/devcard?username=octocat&layout=constructor",
+    "/api/devcard?username=octocat&stats=bad",
+    "/api/devcard?username=octocat&stats=constructor",
+    "/api/profile?username=octocat&stats=bad",
+    "/api/devcard?username=octocat&stats=repos,,stars",
   ])
     expect((await request(url)).status).toBe(400);
   expect((await request("/not-found")).status).toBe(404);
@@ -123,6 +127,59 @@ test("GitHub data and embedded avatar produce SVG and upstream errors are mapped
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+test("statistics selections share profile data with previews and have separate SVG caches", async () => {
+  const fetchMock = vi.fn(async (input: string) => {
+    const url = new URL(input);
+    if (url.pathname.endsWith("/repos"))
+      return Response.json([{ stargazers_count: 1234, private: false }]);
+    if (url.pathname === "/search/issues")
+      return Response.json({ total_count: 56, incomplete_results: false });
+    return Response.json({
+      login: "stats-user",
+      name: "Stats User",
+      bio: null,
+      id: 42,
+      public_repos: 8,
+      followers: 99,
+      created_at: "2020-01-01T00:00:00Z",
+    });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const profile = await request("/api/profile?username=stats-user&stats=stars,followers");
+  expect(JSON.parse(profile.body).user.stars).toBe(1234);
+  expect(JSON.parse(profile.body).user.pull_requests).toBeUndefined();
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  const impact = await request("/api/devcard?username=stats-user&stats=stars,followers");
+  expect(impact.status).toBe(200);
+  expect(impact.body).toContain('aria-label="1234 stars received"');
+  expect(impact.body).not.toContain('data-stat="repos"');
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  const overview = await request(
+    "/api/devcard?username=stats-user&stats=repos,stars,prs,followers",
+  );
+  expect(overview.status).toBe(200);
+  expect(overview.body).toContain('aria-label="56 public pull requests authored"');
+  expect(overview.body).not.toBe(impact.body);
+  expect(fetchMock).toHaveBeenCalledTimes(5);
+  expect((await request("/api/devcard?username=STATS-USER&stats=stars,followers")).body).toBe(
+    impact.body,
+  );
+  expect((await request("/api/devcard?username=stats-user&stats=followers,stars,stars")).body).toBe(
+    impact.body,
+  );
+  const head = await request(
+    "/api/devcard?username=stats-user&stats=repos,stars,prs,followers",
+    "HEAD",
+  );
+  expect(head.headers).toEqual(overview.headers);
+  expect(head.body).toBe("");
+  expect(fetchMock).toHaveBeenCalledTimes(5);
+  const hidden = await request("/api/devcard?username=stats-user&stats=");
+  expect(hidden.status).toBe(200);
+  expect(hidden.body).not.toContain('id="stats"');
+  expect(fetchMock).toHaveBeenCalledTimes(6);
 });
 
 test("Worker declares a 30-minute cache TTL and refetches evicted profiles", async () => {

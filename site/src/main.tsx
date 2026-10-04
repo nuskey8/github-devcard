@@ -6,6 +6,11 @@ import {
   escapeXml,
   renderDevcard,
   loadCardTypography,
+  statLabels,
+  defaultStats,
+  selectedStats,
+  statIcons,
+  type CardMetric,
   type CardLayout,
 } from "@github-devcard/worker/devcard";
 import type { CachedProfile } from "@github-devcard/worker/profile";
@@ -15,6 +20,7 @@ import {
   themeAtom,
   patternAtom,
   layoutAtom,
+  statsAtom,
   orgAtom,
   customLogoAtom,
 } from "./state.ts";
@@ -29,9 +35,10 @@ const themeOptions = Object.entries(themes).map(([key, value]) => [key, value.la
 const profiles = new LRUCache<string, CachedProfile>({
   max: 20,
   ttl: 300_000,
-  async fetchMethod(username, _stale, { signal }) {
+  async fetchMethod(key, _stale, { signal }) {
+    const [username, stats] = key.split(":");
     const response = await fetch(
-      `${import.meta.env.BASE_URL}api/profile?username=${encodeURIComponent(username)}`,
+      `${import.meta.env.BASE_URL}api/profile?username=${encodeURIComponent(username)}&stats=${stats}`,
       { signal },
     );
     if (!response.ok) {
@@ -42,10 +49,14 @@ const profiles = new LRUCache<string, CachedProfile>({
   },
 });
 
-async function loadProfile(username: string, signal: AbortSignal): Promise<CachedProfile> {
+async function loadProfile(
+  username: string,
+  signal: AbortSignal,
+  stats: readonly CardMetric[] = defaultStats,
+): Promise<CachedProfile> {
   signal.throwIfAborted();
   // Share in-flight requests so changing styles during loading doesn't refetch the profile.
-  const data = await profiles.fetch(username.toLowerCase());
+  const data = await profiles.fetch(`${username.toLowerCase()}:${stats.join(",")}`);
   signal.throwIfAborted();
   if (!data) throw new Error("Unable to load the profile.");
   return data;
@@ -65,6 +76,7 @@ function App() {
   const [theme, setTheme] = useAtom(themeAtom);
   const [pattern, setPattern] = useAtom(patternAtom);
   const [layout, setLayout] = useAtom(layoutAtom);
+  const [stats, setStats] = useAtom(statsAtom);
   const [org, setOrg] = useAtom(orgAtom);
   const [customLogo, setCustomLogo] = useAtom(customLogoAtom);
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
@@ -95,6 +107,7 @@ function App() {
     nextLogo = customLogo,
     nextOrg = org,
     nextLayout = layout,
+    nextStats = stats,
   ) {
     const name = username.trim().replace(/^@/, "");
     if (!githubUsernameSchema.safeParse(name).success) {
@@ -113,8 +126,8 @@ function App() {
     setCopied(false);
 
     try {
-      const path = `${import.meta.env.BASE_URL}api/devcard?username=${encodeURIComponent(name)}&theme=${nextTheme}&pattern=${nextPattern}&layout=${nextLayout}${!nextLogo && nextOrg.trim() ? `&org=${encodeURIComponent(nextOrg.trim())}` : ""}`;
-      const { user, avatar } = await loadProfile(name, controller.signal);
+      const path = `${import.meta.env.BASE_URL}api/devcard?username=${encodeURIComponent(name)}&theme=${nextTheme}&pattern=${nextPattern}&layout=${nextLayout}&stats=${nextStats.join(",")}${!nextLogo && nextOrg.trim() ? `&org=${encodeURIComponent(nextOrg.trim())}` : ""}`;
+      const { user, avatar } = await loadProfile(name, controller.signal, nextStats);
       let logo = nextLogo;
       if (!logo && nextOrg.trim()) {
         logo = (await loadProfile(nextOrg.trim(), controller.signal)).avatar;
@@ -125,7 +138,18 @@ function App() {
       );
       controller.signal.throwIfAborted();
       const blob = new Blob(
-        [renderDevcard(user, nextTheme, avatar, nextPattern, logo, nextLayout, typography)],
+        [
+          renderDevcard(
+            user,
+            nextTheme,
+            avatar,
+            nextPattern,
+            logo,
+            nextLayout,
+            typography,
+            nextStats,
+          ),
+        ],
         {
           type: "image/svg+xml",
         },
@@ -310,6 +334,42 @@ function App() {
                       }}
                     />
                     <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Statistics</legend>
+              <div class="stats-options">
+                {(Object.keys(statLabels) as CardMetric[]).map((metric) => (
+                  <label class="layout-option stat-option" key={metric}>
+                    <input
+                      type="checkbox"
+                      name="stats"
+                      value={metric}
+                      checked={stats.includes(metric)}
+                      onChange={(e) => {
+                        const nextStats = selectedStats(
+                          (e.currentTarget.checked
+                            ? [...stats, metric]
+                            : stats.filter((value) => value !== metric)
+                          ).join(","),
+                        );
+                        setStats(nextStats);
+                        void generate(theme, pattern, customLogo, org, layout, nextStats);
+                      }}
+                    />
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                      dangerouslySetInnerHTML={{ __html: statIcons[metric] }}
+                    />
+                    <span>{statLabels[metric]}</span>
                   </label>
                 ))}
               </div>

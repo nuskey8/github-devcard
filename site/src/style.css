@@ -827,6 +827,32 @@ main.about-page {
   gap: 8px;
 }
 
+.stats-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stat-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stat-option input {
+  position: static;
+  opacity: 1;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.stat-option svg {
+  width: 18px;
+  height: 18px;
+}
+
 .layout-option {
   position: relative;
   flex: 1;

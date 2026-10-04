@@ -1,11 +1,11 @@
-import { devcardQuerySchema, githubUsernameSchema } from "./validation.ts";
-import { renderDevcard } from "./devcard.ts";
-import type { CardTypographyLoader } from "./devcard.ts";
+import { devcardQuerySchema, githubUsernameSchema, statsSchema } from "./validation.ts";
+import { renderDevcard, defaultStats, selectedStats } from "./devcard.ts";
+import type { CardTypographyLoader, CardMetric } from "./devcard.ts";
 import type { CachedProfile } from "./profile.ts";
 
 export async function handleDevcardRequest(
   req: Request,
-  profile: (username: string) => Promise<CachedProfile>,
+  profile: (username: string, stats?: readonly CardMetric[]) => Promise<CachedProfile>,
   cache: Cache,
   ctx: Pick<ExecutionContext, "waitUntil">,
   loadTypography: CardTypographyLoader,
@@ -22,7 +22,10 @@ export async function handleDevcardRequest(
       const username = githubUsernameSchema.safeParse(url.searchParams.get("username") || "");
       if (!username.success)
         throw Object.assign(new Error(username.error.issues[0].message), { status: 400 });
-      const data = await profile(username.data.toLowerCase());
+      const stats = statsSchema.safeParse(url.searchParams.get("stats") ?? defaultStats.join(","));
+      if (!stats.success)
+        throw Object.assign(new Error(stats.error.issues[0].message), { status: 400 });
+      const data = await profile(username.data.toLowerCase(), selectedStats(stats.data));
       headers.set("Cache-Control", "public, max-age=300, s-maxage=1800");
       headers.set("Content-Type", "application/json; charset=utf-8");
       return head ? new Response(null, { headers }) : Response.json(data, { headers });
@@ -35,23 +38,26 @@ export async function handleDevcardRequest(
       pattern: url.searchParams.get("pattern") || "leaf",
       layout: url.searchParams.get("layout") || "portrait",
       org: url.searchParams.get("org") || "",
+      stats: url.searchParams.get("stats") ?? defaultStats.join(","),
     });
     if (!parsed.success)
       throw Object.assign(new Error(parsed.error.issues[0].message), { status: 400 });
 
     const { username, theme, pattern, org, layout } = parsed.data;
-    const cacheUrl = new URL("/__devcard-cache/v2", url);
+    const stats = selectedStats(parsed.data.stats);
+    const cacheUrl = new URL("/__devcard-cache/v4", url);
     cacheUrl.search = new URLSearchParams({
       username: username.toLowerCase(),
       theme,
       pattern,
       layout,
+      stats: stats.join(","),
       org: org.toLowerCase(),
     }).toString();
     const cacheKey = new Request(cacheUrl);
     const cached = await cache.match(cacheKey);
     if (cached) return head ? new Response(null, { headers: cached.headers }) : cached;
-    const { user, avatar } = await profile(username);
+    const { user, avatar } = await profile(username, stats);
     const logo = org ? (await profile(org)).avatar : "";
     if (org && !logo)
       throw Object.assign(new Error("Unable to fetch the organization logo."), { status: 502 });
@@ -65,7 +71,7 @@ export async function handleDevcardRequest(
 
     const typography = await loadTypography(`${user.login} ${user.name || ""} ${user.bio || ""}`);
     const response = new Response(
-      renderDevcard(user, theme, avatar, pattern, logo, layout, typography),
+      renderDevcard(user, theme, avatar, pattern, logo, layout, typography, stats),
       {
         headers,
       },

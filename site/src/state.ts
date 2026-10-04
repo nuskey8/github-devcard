@@ -3,7 +3,13 @@ import {
   createJSONStorage,
   unstable_withStorageValidator as withStorageValidator,
 } from "jotai/vanilla/utils";
-import { cardLayouts, type CardLayout } from "@github-devcard/worker/devcard";
+import {
+  cardLayouts,
+  statLabels,
+  defaultStats,
+  type CardLayout,
+  type CardMetric,
+} from "@github-devcard/worker/devcard";
 import { themes } from "@github-devcard/worker/themes";
 import { patterns } from "@github-devcard/worker/patterns";
 
@@ -21,6 +27,18 @@ const layoutStorage = withStorageValidator(
   (value): value is CardLayout => typeof value === "string" && Object.hasOwn(cardLayouts, value),
 )(jsonStorage);
 const options = { getOnInit: true };
+
+export const statsAtom = atomWithStorage<CardMetric[]>(
+  "github-devcard:metrics",
+  defaultStats,
+  withStorageValidator(
+    (value): value is CardMetric[] =>
+      Array.isArray(value) &&
+      value.every((metric) => typeof metric === "string" && Object.hasOwn(statLabels, metric)) &&
+      new Set(value).size === value.length,
+  )(jsonStorage),
+  options,
+);
 
 export const usernameAtom = atomWithStorage(
   "github-devcard:username",

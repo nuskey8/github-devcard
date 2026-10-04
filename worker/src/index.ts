@@ -1,6 +1,6 @@
 import { handleDevcardRequest } from "./api.ts";
 import { fetchProfile, type CachedProfile } from "./profile.ts";
-import { loadCardTypography } from "./devcard.ts";
+import { loadCardTypography, defaultStats } from "./devcard.ts";
 
 export default {
   async fetch(request, env, ctx) {
@@ -12,9 +12,12 @@ export default {
     const cardCache = await caches.open("github-devcards-v1");
     return handleDevcardRequest(
       new Request(url, request),
-      async (username) => {
+      async (username, stats = defaultStats) => {
         const key = new Request(
-          new URL(`/__profile-cache/v1/${username.toLowerCase()}`, url.origin),
+          new URL(
+            `/__profile-cache/v1/${username.toLowerCase()}${stats.join(",") === defaultStats.join(",") ? "" : `?stats=${stats.join(",")}`}`,
+            url.origin,
+          ),
         );
         const cache = await caches.open("github-profiles-v1");
         const cached = await cache.match(key);
@@ -29,7 +32,7 @@ export default {
             status: 429,
             retryAfter: 60,
           });
-        const profile = await fetchProfile(username.toLowerCase(), env.GITHUB_TOKEN);
+        const profile = await fetchProfile(username.toLowerCase(), env.GITHUB_TOKEN, stats);
         ctx.waitUntil(
           cache
             .put(

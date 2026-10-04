@@ -7,6 +7,8 @@ import {
   themes,
   type GitHubUser,
   type CardLayout,
+  statLabels,
+  type CardMetric,
 } from "../src/devcard.ts";
 import { readFile } from "node:fs/promises";
 
@@ -30,8 +32,9 @@ function renderDevcard(
   pattern?: string,
   logo?: string,
   layout?: CardLayout,
+  stats?: readonly CardMetric[],
 ) {
-  return renderWithFonts(user, theme, avatar, pattern, logo, layout, typography);
+  return renderWithFonts(user, theme, avatar, pattern, logo, layout, typography, stats);
 }
 
 const user = {
@@ -178,6 +181,44 @@ test("all card text uses self-contained outlines with escaped accessible labels"
   expect(svg).not.toContain("NaN");
   expect(svg).not.toContain("Infinity");
   expect(renderDevcard({ ...user, name: "日本語 & Grotesk", bio: "Hello 日本語" })).toBe(svg);
+});
+
+test("statistics selections show only selected metrics as icons in both layouts", () => {
+  const profile = {
+    ...user,
+    stars: 98765,
+    pull_requests: 4321,
+    issues: 654,
+    commits: 12345,
+    followers: 1234567,
+  };
+  for (const layout of ["portrait", "landscape"] as const) {
+    for (const selection of [
+      [],
+      ["stars"],
+      ["prs", "stars"],
+      Object.keys(statLabels),
+    ] as CardMetric[][]) {
+      const svg = renderDevcard(profile, "paper", "", "leaf", "", layout, selection);
+      const metrics = [...svg.matchAll(/data-stat="([^"]+)"/g)].map((match) => match[1]);
+      expect(metrics).toEqual(selection);
+      if (!selection.length) expect(svg).not.toContain('id="stats"');
+      expect(svg).not.toMatch(/NaN|Infinity|<text\b/);
+      expect(svg).not.toContain(" repos</");
+      if (selection.length === 6) {
+        expect(svg).toContain('aria-label="654 public issues authored"');
+        expect(svg).toContain('aria-label="12345 public commits authored on default branches"');
+        expect(svg).not.toContain('transform="translate(0 48)"');
+        expect(svg).toContain('height="54"');
+        expect(svg).toContain('aria-label="98.8K"');
+        expect(svg).toContain('aria-label="98765 stars received"');
+        expect(svg).toContain('aria-label="4321 public pull requests authored"');
+      }
+    }
+  }
+  const unavailable = renderDevcard(user, "paper", "", "leaf", "", "portrait", ["prs", "stars"]);
+  expect(unavailable).toContain('aria-label="Unavailable stars received"');
+  expect(unavailable).not.toContain('aria-label="0 stars received"');
 });
 
 test("font loads are shared and Japanese fonts are only loaded when needed", async () => {

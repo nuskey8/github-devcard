@@ -87,3 +87,118 @@ test("discards and cancels unsupported or malformed image responses", async () =
     expect(cancel).toHaveBeenCalledOnce();
   }
 });
+
+test("extended statistics count every public repository page and authored public PRs", async () => {
+  const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
+    const url = new URL(input);
+    expect(init?.headers).toEqual(expect.objectContaining({ Authorization: "Bearer test-token" }));
+    if (url.pathname === "/users/test-user")
+      return Response.json({
+        login: "test-user",
+        name: "Test User",
+        bio: null,
+        id: 1,
+        public_repos: 102,
+        followers: 30,
+        created_at: "2020-01-01T00:00:00Z",
+      });
+    if (url.pathname === "/users/test-user/repos") {
+      expect(url.searchParams.get("type")).toBe("owner");
+      expect(url.searchParams.get("per_page")).toBe("100");
+      return url.searchParams.get("page") === "1"
+        ? Response.json(
+            [
+              { stargazers_count: 12, private: false },
+              { stargazers_count: 999, private: true },
+            ],
+            {
+              headers: {
+                Link: '<https://api.github.com/users/test-user/repos?page=2>; rel="next"',
+              },
+            },
+          )
+        : Response.json([{ stargazers_count: 8, private: false }]);
+    }
+    expect(url.pathname).toBe("/search/issues");
+    expect(url.searchParams.get("q")).toBe("is:pr author:test-user is:public");
+    return Response.json({ total_count: 1234, incomplete_results: false });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const result = await fetchProfile("test-user", "test-token", [
+    "repos",
+    "stars",
+    "prs",
+    "followers",
+  ]);
+  expect(result.user.stars).toBe(20);
+  expect(result.user.pull_requests).toBe(1234);
+  expect(fetchMock).toHaveBeenCalledTimes(4);
+});
+
+test("selections fetch only their required statistics and reject incomplete PR counts", async () => {
+  for (const stats of [[], ["stars"], ["prs", "stars"]] as const) {
+    const fetchMock = vi.fn(async (input: string) => {
+      const url = new URL(input);
+      if (url.pathname.endsWith("/repos"))
+        return Response.json([{ stargazers_count: 0, private: false }]);
+      if (url.pathname === "/search/issues")
+        return Response.json({ total_count: 5, incomplete_results: true });
+      return Response.json({
+        login: "test-user",
+        name: null,
+        bio: null,
+        id: 1,
+        public_repos: 1,
+        followers: 0,
+        created_at: "2020-01-01T00:00:00Z",
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    if (stats.length === 2)
+      await expect(fetchProfile("test-user", undefined, stats)).rejects.toMatchObject({
+        status: 502,
+      });
+    else {
+      const result = await fetchProfile("test-user", undefined, stats);
+      expect(result.user.pull_requests).toBeUndefined();
+      expect(result.user.stars).toBe(stats.length === 1 ? 0 : undefined);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(stats.length === 0 ? 1 : stats.length === 1 ? 2 : 3);
+  }
+});
+
+test("issues and commits count authored public activity using separate search endpoints", async () => {
+  const queries: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string) => {
+      const url = new URL(input);
+      if (url.pathname === "/users/test-user")
+        return Response.json({
+          login: "test-user",
+          name: null,
+          bio: null,
+          id: 1,
+          public_repos: 1,
+          followers: 0,
+          created_at: "2020-01-01T00:00:00Z",
+        });
+      const query = url.searchParams.get("q")!;
+      queries.push(query);
+      expect(url.searchParams.get("per_page")).toBe("1");
+      if (url.pathname === "/search/commits") {
+        expect(query).toBe("author:test-user is:public");
+        return Response.json({ total_count: 12000, incomplete_results: false });
+      }
+      expect(url.pathname).toBe("/search/issues");
+      expect(query).toBe("is:issue author:test-user is:public");
+      return Response.json({ total_count: 42, incomplete_results: false });
+    }),
+  );
+  const result = await fetchProfile("test-user", undefined, ["issues", "commits"]);
+  expect(result.user.issues).toBe(42);
+  expect(result.user.commits).toBe(12000);
+  expect(result.user.stars).toBeUndefined();
+  expect(result.user.pull_requests).toBeUndefined();
+  expect(queries).toHaveLength(2);
+});

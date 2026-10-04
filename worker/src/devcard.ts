@@ -1,3 +1,4 @@
+import { BookOpen, Users, Star, GitPullRequest, CircleDot, GitCommitHorizontal, type IconNode } from "lucide";
 import { parse, type Font, type Path } from "opentype.js";
 import { renderCardMark } from "./logo.ts";
 import { renderAvatarMask } from "./patterns.ts";
@@ -12,6 +13,37 @@ export const cardLayouts = {
 
 export type CardLayout = keyof typeof cardLayouts;
 
+export const statLabels = {
+  repos: "Repos",
+  followers: "Followers",
+  stars: "Stars",
+  prs: "PRs",
+  issues: "Issues",
+  commits: "Commits",
+} as const;
+export type CardMetric = keyof typeof statLabels;
+export const defaultStats: CardMetric[] = ["repos", "followers"];
+export function selectedStats(value: string): CardMetric[] {
+  return (Object.keys(statLabels) as CardMetric[]).filter((metric) =>
+    value.split(",").includes(metric),
+  );
+}
+
+const statIconNodes: Record<CardMetric, IconNode> = {
+  repos: BookOpen,
+  followers: Users,
+  stars: Star,
+  prs: GitPullRequest,
+  issues: CircleDot,
+  commits: GitCommitHorizontal,
+};
+export const statIcons = Object.fromEntries(
+  Object.entries(statIconNodes).map(([metric, nodes]) => [
+    metric,
+    nodes.map(([tag, attributes]) => `<${tag} ${Object.entries(attributes).map(([key, value]) => `${key}="${escapeXml(value)}"`).join(" ")}/>`).join(""),
+  ]),
+) as Record<CardMetric, string>;
+
 export interface GitHubUser {
   login: string;
   name: string | null;
@@ -19,6 +51,10 @@ export interface GitHubUser {
   id: number;
   public_repos: number;
   followers: number;
+  stars?: number;
+  pull_requests?: number;
+  issues?: number;
+  commits?: number;
   created_at: string;
   avatar_url?: string;
 }
@@ -231,9 +267,12 @@ export function renderDevcard(
   logo = "",
   layout: CardLayout = "portrait",
   typography: CardTypography,
+  stats: readonly CardMetric[] = defaultStats,
 ) {
   const t = Object.hasOwn(themes, theme) ? themes[theme] : themes.sky;
   const landscape = layout === "landscape";
+  const metrics = stats;
+  const compact = metrics.length > 3;
   const { width, height } = cardLayouts[layout];
   const geometry = landscape
     ? {
@@ -261,7 +300,7 @@ export function renderDevcard(
         bioWidth: 512,
         bioHeight: 64,
         statsX: 42,
-        statsY: 790,
+        statsY: compact ? 782 : 790,
         logoX: 492,
         logoY: 790,
         footerY: 865,
@@ -278,9 +317,52 @@ export function renderDevcard(
     : 22;
   const e = escapeXml;
   const year = new Date(user.created_at).getUTCFullYear();
+  const values = {
+    repos: user.public_repos,
+    followers: user.followers,
+    stars: user.stars,
+    prs: user.pull_requests,
+    issues: user.issues,
+    commits: user.commits,
+  };
+  const labels = {
+    repos: "repositories",
+    followers: "followers",
+    stars: "stars received",
+    prs: "public pull requests authored",
+    issues: "public issues authored",
+    commits: "public commits authored on default branches",
+  };
+  const statsWidth = landscape ? width - 44 - geometry.statsX : 340;
+  const columns = Math.max(1, metrics.length);
+  const dividerWidth = compact ? 0 : columns === 2 ? 32 : 20;
+  const cellWidth = (statsWidth - dividerWidth * (columns - 1)) / columns;
+  const statItems = metrics
+    .map((metric, index) => {
+      const x = index * (cellWidth + dividerWidth);
+      const y = 0;
+      const value = values[metric];
+      const number =
+        value === undefined
+          ? "—"
+          : new Intl.NumberFormat("en-US", {
+              notation: metrics.length > 2 ? "compact" : "standard",
+              maximumFractionDigits: 1,
+            }).format(value);
+      const fontSize = Math.min(
+        landscape ? 20 : 17,
+        (cellWidth - (compact ? 8 : 43)) / Math.max(typography.width(number, 1, true), 1),
+      );
+      if (compact) {
+        const center = x + cellWidth / 2;
+        return `<g data-stat="${metric}" aria-label="${e(value ?? "Unavailable")} ${labels[metric]}"><title>${labels[metric]}</title><g transform="translate(${center - 9} 9) scale(0.75)" fill="none" stroke="${t.foreground}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${statIcons[metric]}</g>${typography.text(number, center, 46, fontSize, { bold: true, anchor: "middle" })}</g>${index < columns - 1 ? `<path d="M${x + cellWidth} 8v38" stroke="${t.line}" stroke-width="1"/>` : ""}`;
+      }
+      return `<g data-stat="${metric}" transform="translate(0 ${y})" aria-label="${e(value ?? "Unavailable")} ${labels[metric]}"><title>${labels[metric]}</title><g transform="translate(${x + 10} 10) scale(0.8333)" fill="none" stroke="${t.foreground}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${statIcons[metric]}</g>${typography.text(number, x + 38, 26, fontSize, { bold: true })}</g>${index % columns < columns - 1 && index < metrics.length - 1 ? `<rect x="${x + cellWidth}" width="${dividerWidth}" height="40" y="${y}" fill="url(#hatch)" stroke="${t.line}" stroke-width="2"/>` : ""}`;
+    })
+    .join("");
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="title desc">
-  <title id="title">${e(user.login)} · GitHub DevCard</title><desc id="desc">GitHub profile: ${e(user.name || user.login)}, ${user.public_repos} repositories, ${user.followers} followers</desc>
+  <title id="title">${e(user.login)} · GitHub DevCard</title><desc id="desc">GitHub profile: ${e(user.name || user.login)}, ${metrics.map((metric) => `${e(values[metric] ?? "Unavailable")} ${labels[metric]}`).join(", ")}</desc>
   <defs><clipPath id="avatar">${mask}</clipPath><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M-1 1L1-1M0 6L6 0M5 7L7 5" stroke="${t.foreground}" stroke-width="1.5"/></pattern></defs>
   <rect width="${width}" height="${height}" rx="16" fill="${t.background}"/>
   <g id="avatar-shape" fill="${t.accent}">${mask}</g>
@@ -289,7 +371,7 @@ export function renderDevcard(
   ${typography.text(name, landscape ? geometry.textX : 42, geometry.nameY, nameSize, { bold: true, central: landscape })}
   ${typography.text(`@${user.login}`, geometry.textX, geometry.usernameY, usernameSize, { bold: true })}
   ${biography(user.bio, typography, t.muted, geometry.textX, geometry.bioY, geometry.bioWidth, geometry.bioHeight, landscape ? 22 : 18)}
-  <g transform="translate(${geometry.statsX} ${geometry.statsY})"><rect width="${landscape ? width - 44 - geometry.statsX : 340}" height="40" rx="8" fill="none" stroke="${t.line}" stroke-width="2"/>${typography.text(`${Number(user.public_repos).toLocaleString("en-US")} repos`, 13, landscape ? 28 : 26, landscape ? 20 : 17, { bold: true })}<rect x="132" width="24" height="40" fill="url(#hatch)" stroke="${t.line}" stroke-width="2"/>${typography.text(`${Number(user.followers).toLocaleString("en-US")} followers`, 169, landscape ? 28 : 26, landscape ? 20 : 17, { bold: true })}</g>
+  ${metrics.length ? `<g id="stats" transform="translate(${geometry.statsX} ${geometry.statsY})"><rect width="${statsWidth}" height="${compact ? 54 : 40}" rx="8" fill="none" stroke="${t.line}" stroke-width="2"/>${statItems}</g>` : ""}
   <g id="brand-logo">${logo ? `<image href="${e(logo)}" x="${geometry.logoX}" y="${geometry.logoY}" width="64" height="40" preserveAspectRatio="xMidYMid meet"/>` : `<g transform="translate(${geometry.logoX} ${geometry.logoY})">${renderCardMark(t.foreground, t.background)}</g>`}</g>
   ${typography.text(`GitHub DevCard / Member since ${year}`, 44, geometry.footerY, 16, { spacing: 1, fill: t.muted })}${typography.text(`NO. ${user.id}`, width - 44, geometry.footerY, 16, { anchor: "end", fill: t.muted })}
   </g></svg>`;
