@@ -122,7 +122,7 @@ main {
   grid-template-columns: 420px 1fr;
   background: var(--paper);
   border-radius: 0 0 16px 16px;
-  overflow: hidden;
+  overflow: clip;
 }
 
 .editor {
