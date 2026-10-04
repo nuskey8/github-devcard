@@ -7,7 +7,7 @@ import { themes } from "./themes.ts";
 export { themes } from "./themes.ts";
 
 export const cardLayouts = {
-  portrait: { label: "Portrait", width: 600, height: 900 },
+  portrait: { label: "Portrait", width: 600, height: 915 },
   landscape: { label: "Landscape", width: 910, height: 550 },
 } as const;
 
@@ -243,20 +243,33 @@ function biography(
   width: number,
   height: number,
   fontSize = 18,
+  minFontSize = 10,
 ): string {
   if (!value?.trim()) return "";
 
   let lines = wrapBio(value, fontSize, width, typography);
-  while (fontSize > 10 && lines.length * fontSize * 1.4 > height) {
+  while (fontSize > minFontSize && lines.length * fontSize * 1.4 > height) {
     fontSize -= 0.5;
     lines = wrapBio(value, fontSize, width, typography);
   }
 
-  return lines
+  const maxLines = Math.max(1, Math.floor(height / (fontSize * 1.4)));
+  const truncated = lines.length > maxLines;
+  if (truncated) {
+    lines = lines.slice(0, maxLines);
+    let last = lines[maxLines - 1].trimEnd();
+    while (last && typography.width(last + "…", fontSize) > width) {
+      last = Array.from(last).slice(0, -1).join("").trimEnd();
+    }
+    lines[maxLines - 1] = last + "…";
+  }
+
+  const content = lines
     .map((line, index) =>
       typography.text(line, x, y + index * fontSize * 1.4, fontSize, { fill: color }),
     )
     .join("");
+  return truncated ? `<g><title>${escapeXml(value)}</title>${content}</g>` : content;
 }
 
 export function renderDevcard(
@@ -302,19 +315,17 @@ export function renderDevcard(
         statsX: 42,
         statsY: compact ? 782 : 790,
         logoX: 492,
-        logoY: 790,
-        footerY: 865,
+        logoY: compact ? 794 : 790,
+        footerY: 880,
       };
   const mask = renderAvatarMask(pattern, geometry.avatarSize, geometry.avatarY);
   const name = short(user.name || user.login, 28);
   const nameSize = landscape
-    ? Math.min(46, (geometry.logoX - geometry.textX - 16) / typography.width(name, 1, true))
-    : Array.from(user.name || user.login).length > 19
-      ? 32
-      : 46;
+    ? Math.min(54, (geometry.logoX - geometry.textX - 16) / typography.width(name, 1, true))
+    : Math.min(54, geometry.bioWidth / typography.width(name, 1, true));
   const usernameSize = landscape
-    ? Math.min(26, geometry.bioWidth / typography.width(`@${user.login}`, 1, true))
-    : 22;
+    ? Math.min(30, geometry.bioWidth / typography.width(`@${user.login}`, 1, true))
+    : Math.min(28, geometry.bioWidth / typography.width(`@${user.login}`, 1, true));
   const e = escapeXml;
   const year = new Date(user.created_at).getUTCFullYear();
   const values = {
@@ -340,7 +351,6 @@ export function renderDevcard(
   const statItems = metrics
     .map((metric, index) => {
       const x = index * (cellWidth + dividerWidth);
-      const y = 0;
       const value = values[metric];
       const number =
         value === undefined
@@ -350,14 +360,16 @@ export function renderDevcard(
               maximumFractionDigits: 1,
             }).format(value);
       const fontSize = Math.min(
-        landscape ? 20 : 17,
-        (cellWidth - (compact ? 8 : 43)) / Math.max(typography.width(number, 1, true), 1),
+        landscape ? 26 : 24,
+        (cellWidth - (compact ? 16 : 56)) / Math.max(typography.width(number, 1, true), 1),
       );
       if (compact) {
         const center = x + cellWidth / 2;
-        return `<g data-stat="${metric}" aria-label="${e(value ?? "Unavailable")} ${labels[metric]}"><title>${labels[metric]}</title><g transform="translate(${center - 9} 9) scale(0.75)" fill="none" stroke="${t.foreground}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${statIcons[metric]}</g>${typography.text(number, center, 46, fontSize, { bold: true, anchor: "middle" })}</g>${index < columns - 1 ? `<path d="M${x + cellWidth} 8v38" stroke="${t.line}" stroke-width="1"/>` : ""}`;
+        return `<g data-stat="${metric}" aria-label="${e(value ?? "Unavailable")} ${labels[metric]}"><title>${labels[metric]}</title><g transform="translate(${center - 12} 8)" fill="none" stroke="${t.foreground}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${statIcons[metric]}</g>${typography.text(number, center, 54, fontSize, { bold: true, anchor: "middle" })}</g>${index < columns - 1 ? `<path d="M${x + cellWidth} 8v48" stroke="${t.line}" stroke-width="1"/>` : ""}`;
       }
-      return `<g data-stat="${metric}" transform="translate(0 ${y})" aria-label="${e(value ?? "Unavailable")} ${labels[metric]}"><title>${labels[metric]}</title><g transform="translate(${x + 10} 10) scale(0.8333)" fill="none" stroke="${t.foreground}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${statIcons[metric]}</g>${typography.text(number, x + 38, 26, fontSize, { bold: true })}</g>${index % columns < columns - 1 && index < metrics.length - 1 ? `<rect x="${x + cellWidth}" width="${dividerWidth}" height="40" y="${y}" fill="url(#hatch)" stroke="${t.line}" stroke-width="2"/>` : ""}`;
+      const groupWidth = 28 + 8 + typography.width(number, fontSize, true);
+      const groupX = x + (cellWidth - groupWidth) / 2;
+      return `<g data-stat="${metric}" aria-label="${e(value ?? "Unavailable")} ${labels[metric]}"><title>${labels[metric]}</title><g transform="translate(${groupX} 6) scale(${28 / 24})" fill="none" stroke="${t.foreground}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${statIcons[metric]}</g>${typography.text(number, groupX + 36, 20, fontSize, { bold: true, central: true })}</g>${index % columns < columns - 1 && index < metrics.length - 1 ? `<rect x="${x + cellWidth}" width="${dividerWidth}" height="40" y="0" fill="url(#hatch)" stroke="${t.line}" stroke-width="2"/>` : ""}`;
     })
     .join("");
 
@@ -370,9 +382,9 @@ export function renderDevcard(
   <g fill="${t.foreground}">
   ${typography.text(name, landscape ? geometry.textX : 42, geometry.nameY, nameSize, { bold: true, central: landscape })}
   ${typography.text(`@${user.login}`, geometry.textX, geometry.usernameY, usernameSize, { bold: true })}
-  ${biography(user.bio, typography, t.muted, geometry.textX, geometry.bioY, geometry.bioWidth, geometry.bioHeight, landscape ? 22 : 18)}
-  ${metrics.length ? `<g id="stats" transform="translate(${geometry.statsX} ${geometry.statsY})"><rect width="${statsWidth}" height="${compact ? 54 : 40}" rx="8" fill="none" stroke="${t.line}" stroke-width="2"/>${statItems}</g>` : ""}
+  ${biography(user.bio, typography, t.muted, geometry.textX, geometry.bioY, geometry.bioWidth, geometry.bioHeight, landscape ? 26 : 22, landscape ? 10 : 18)}
+  ${metrics.length ? `<g id="stats" transform="translate(${geometry.statsX} ${geometry.statsY})"><rect width="${statsWidth}" height="${compact ? 64 : 40}" rx="8" fill="none" stroke="${t.line}" stroke-width="2"/>${statItems}</g>` : ""}
   <g id="brand-logo">${logo ? `<image href="${e(logo)}" x="${geometry.logoX}" y="${geometry.logoY}" width="64" height="40" preserveAspectRatio="xMidYMid meet"/>` : `<g transform="translate(${geometry.logoX + (landscape ? 6.4 : 0)} ${geometry.logoY + (landscape ? 4 : 0)})${landscape ? " scale(0.8)" : ""}">${renderCardMark(t.foreground, t.background)}</g>`}</g>
-  ${typography.text(`GitHub DevCard / Member since ${year}`, 44, geometry.footerY, 16, { spacing: 1, fill: t.muted })}${typography.text(`NO. ${user.id}`, width - 44, geometry.footerY, 16, { anchor: "end", fill: t.muted })}
+  ${typography.text(`GitHub DevCard / Member since ${year}`, 44, geometry.footerY, 18, { spacing: 0.5, fill: t.muted })}${typography.text(`NO. ${user.id}`, width - 44, geometry.footerY, 18, { anchor: "end", fill: t.muted })}
   </g></svg>`;
 }

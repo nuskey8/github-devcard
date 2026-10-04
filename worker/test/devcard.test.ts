@@ -71,7 +71,7 @@ test("every pattern uses its own mask and keeps the portrait dimensions", async 
   const masks = new Set();
   for (const [key, shape] of Object.entries(patterns)) {
     const svg = renderDevcard(user, "paper", "data:image/png;base64,YQ==", key);
-    expect(svg.includes('width="600" height="900" viewBox="0 0 600 900"')).toBeTruthy();
+    expect(svg.includes('width="600" height="915" viewBox="0 0 600 915"')).toBeTruthy();
     expect(svg.includes(shape.path)).toBeTruthy();
     expect(svg).toContain(`transform="translate(42 42) scale(5.16) ${shape.transform}"`);
     expect(svg).toContain('width="516" height="516"');
@@ -106,7 +106,7 @@ test("every palette keeps card text readable", () => {
   }
 });
 
-test("biography wraps without truncating Latin or Japanese text", () => {
+test("portrait biographies keep readable text within the fixed space", () => {
   for (const bio of [
     "A developer building thoughtful tools and open source projects. ".repeat(2).trim(),
     "開発者として使いやすいソフトウェアを作っています。".repeat(5),
@@ -120,14 +120,16 @@ test("biography wraps without truncating Latin or Japanese text", () => {
       .map((line) => [line[0], line[2], line[1]])
       .filter((line) => Number(line[1]) >= 717 && Number(line[1]) < 790);
     expect(lines.length).toBeGreaterThan(1);
-    expect(
-      lines
-        .map((line) => line[2])
-        .join("")
-        .replace(/\s/g, ""),
-    ).toBe(bio.replace(/\s/g, ""));
+    const sizes = [...svg.matchAll(/data-x="44" data-y="[\d.]+" data-font-size="([\d.]+)" fill=/g)].map((match) => Number(match[1]));
+    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(18);
+    const displayed = lines.map((line) => line[2]).join("");
+    if (displayed.endsWith("…")) {
+      expect(svg).toContain(`<title>${escapeXml(bio)}</title>`);
+    } else {
+      expect(displayed.replace(/\s/g, "")).toBe(bio.replace(/\s/g, ""));
+    }
     expect(Math.max(...lines.map((line) => Number(line[1])))).toBeLessThan(780);
-    expect(svg).toContain('aria-label="@octocat" data-x="44" data-y="678" data-font-size="22"');
+    expect(svg).toContain('aria-label="@octocat" data-x="44" data-y="678" data-font-size="28"');
   }
 });
 
@@ -147,7 +149,7 @@ test("landscape cards keep avatars square and wrap biographies in the right colu
     expect(svg).toContain('width="380" height="380" preserveAspectRatio="xMidYMid slice"');
     expect(svg).toContain(`translate(42 72) scale(3.8) ${patterns[pattern].transform}`);
     expect(svg).toContain('x="802" y="76" width="64" height="40"');
-    expect(svg).toContain('data-x="866" data-y="515" data-font-size="16"');
+    expect(svg).toContain('data-x="866" data-y="515" data-font-size="18"');
     const lines = [
       ...svg.matchAll(
         /<g aria-label="([^"]*)" data-x="480" data-y="([\d.]+)" data-font-size="[\d.]+" fill=/g,
@@ -170,7 +172,7 @@ test("landscape biography uses glyph widths rather than wrapping narrow letters 
   ].map((line) => [line[0], line[2], line[1]]);
   expect(lines).toHaveLength(1);
   expect(lines[0][2]).toBe(bio);
-  expect(svg).toContain('data-font-size="22"');
+  expect(svg).toContain('data-font-size="26"');
 });
 
 test("all card text uses self-contained outlines with escaped accessible labels", () => {
@@ -209,7 +211,7 @@ test("statistics selections show only selected metrics as icons in both layouts"
         expect(svg).toContain('aria-label="654 public issues authored"');
         expect(svg).toContain('aria-label="12345 public commits authored on default branches"');
         expect(svg).not.toContain('transform="translate(0 48)"');
-        expect(svg).toContain('height="54"');
+        expect(svg).toContain('height="64"');
         expect(svg).toContain('aria-label="98.8K"');
         expect(svg).toContain('aria-label="98765 stars received"');
         expect(svg).toContain('aria-label="4321 public pull requests authored"');
