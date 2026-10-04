@@ -16,7 +16,7 @@ Replace `YOUR_USERNAME` with your GitHub username. Switch between Portrait (600 
 
 ## About the author
 
-[![nuskey8's GitHub DevCard](https://www.nuskey.md/github-devcard/api/devcard?username=nuskey8&theme=github-light&pattern=leaf&layout=landscape)](https://github.com/nuskey8)
+<img src="https://www.nuskey.md/github-devcard/api/devcard?username=nuskey8&theme=github-light&pattern=leaf" alt="GitHub DevCard" width="300"/>
 
 GitHub DevCard is created by [@nuskey8](https://github.com/nuskey8). Consider supporting this project on [GitHub Sponsors](https://github.com/sponsors/nuskey8) or [Ko-fi](https://ko-fi.com/nuskey8)!
 
