@@ -387,10 +387,32 @@ function App() {
               disabled={!devcard || busy}
               onClick={() => devcard && download(devcard.blob, `${devcard.name}-devcard.svg`)}
             >
-              Save SVG
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4" />
+              </svg>
+              Download SVG
             </button>
             <button disabled={!devcard || busy || saving} onClick={png}>
-              {saving ? "Saving…" : "Save PNG"}
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4" />
+              </svg>
+              {saving ? "Downloading…" : "Download PNG"}
             </button>
           </div>
           <div class="embed">

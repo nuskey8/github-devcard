@@ -275,6 +275,10 @@ fieldset {
   margin-top: 14px;
 }
 .export button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   flex: 1;
   border: 1.5px solid var(--ink);
   background: transparent;
@@ -303,6 +307,7 @@ fieldset {
   color: var(--ink);
   font-size: 12px;
 }
+.export button svg,
 .embed-copy svg {
   width: 14px;
   height: 14px;
