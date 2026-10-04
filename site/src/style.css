@@ -123,7 +123,6 @@ main {
   background: var(--paper);
   border-radius: 0 0 16px 16px;
   overflow: hidden;
-  box-shadow: 0 4px 0 #bd3c2e30;
 }
 
 .editor {
