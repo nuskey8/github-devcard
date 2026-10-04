@@ -12,7 +12,13 @@ You can generate and download the image from [this site](https://www.nuskey.md/g
 ![GitHub DevCard](https://www.nuskey.md/github-devcard/api/devcard?username=YOUR_USERNAME&theme=sky&pattern=leaf)
 ```
 
-Replace `YOUR_USERNAME` with your GitHub username. Switch between Portrait (600 × 900) and Landscape (910 × 550, the proportions of a 91 × 55 mm business card) in the site's Layout controls. Your selection is saved locally and applies to SVG/PNG downloads and the generated Markdown.
+Replace `YOUR_USERNAME` with your GitHub username.
+
+To adjust the image size in your README, select HTML, choose a width, and copy the code. You can also use:
+
+```html
+<img src="https://www.nuskey.md/github-devcard/api/devcard?username=YOUR_USERNAME&amp;theme=sky&amp;pattern=leaf" alt="GitHub DevCard" width="300">
+```
 
 ## About the author
 

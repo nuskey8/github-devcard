@@ -1,7 +1,12 @@
 import { githubUsernameSchema } from "@github-devcard/worker/validation";
 import { render } from "preact";
 import { LRUCache } from "lru-cache";
-import { cardLayouts, renderDevcard, type CardLayout } from "@github-devcard/worker/devcard";
+import {
+  cardLayouts,
+  escapeXml,
+  renderDevcard,
+  type CardLayout,
+} from "@github-devcard/worker/devcard";
 import type { CachedProfile } from "@github-devcard/worker/profile";
 import { useAtom } from "jotai";
 import {
@@ -67,6 +72,7 @@ function App() {
     blob: Blob;
     name: string;
     markdown: string;
+    url: string;
     uploaded: boolean;
     layout: CardLayout;
   } | null>(null);
@@ -75,6 +81,8 @@ function App() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [embedFormat, setEmbedFormat] = useState("markdown");
+  const [embedWidth, setEmbedWidth] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const active = useRef<AbortController | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -129,6 +137,7 @@ function App() {
         image,
         blob,
         name,
+        url,
         uploaded: !!nextLogo,
         layout: nextLayout,
         markdown: `[![${name}'s GitHub DevCard](${url})](https://github.com/${encodeURIComponent(name)})`,
@@ -207,11 +216,17 @@ function App() {
 
   const previewLayout = devcard?.layout ?? layout;
   const dimensions = cardLayouts[previewLayout];
+  const width = embedWidth ?? (previewLayout === "landscape" ? 450 : 300);
+  const embedCode = devcard
+    ? embedFormat === "html"
+      ? `<a href="https://github.com/${encodeURIComponent(devcard.name)}"><img src="${escapeXml(devcard.url)}" alt="${escapeXml(`${devcard.name}'s GitHub DevCard`)}" width="${width}"></a>`
+      : devcard.markdown
+    : "—";
 
   async function copy() {
-    if (!devcard) return;
+    if (!devcard || devcard.uploaded || busy) return;
     try {
-      await navigator.clipboard.writeText(devcard.markdown);
+      await navigator.clipboard.writeText(embedCode);
       setCopied(true);
       clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(false), 2000);
@@ -379,9 +394,83 @@ function App() {
             </button>
           </div>
           <div class="embed">
-            <div class="embed-heading">
-              <span>README</span>
-              <button disabled={!devcard || busy || devcard.uploaded} onClick={copy}>
+            <div class="embed-options">
+              <label>
+                Format
+                <span class="embed-select">
+                  <select
+                    value={embedFormat}
+                    onChange={(e) => {
+                      setEmbedFormat(e.currentTarget.value);
+                      setCopied(false);
+                    }}
+                  >
+                    <option value="markdown">Markdown</option>
+                    <option value="html">HTML</option>
+                  </select>
+                </span>
+              </label>
+              {embedFormat === "html" && (
+                <div class="embed-width">
+                  <label for="embed-width">Width (px)</label>
+                  <div class="embed-number">
+                    <input
+                      id="embed-width"
+                      type="number"
+                      min="1"
+                      max="2000"
+                      value={width}
+                      onInput={(e) => {
+                        const next = e.currentTarget.valueAsNumber;
+                        if (Number.isInteger(next) && next >= 1 && next <= 2000)
+                          setEmbedWidth(next);
+                        setCopied(false);
+                      }}
+                    />
+                    <div class="embed-stepper">
+                      <button
+                        type="button"
+                        aria-label="Increase width"
+                        disabled={width >= 2000}
+                        onClick={() => {
+                          setEmbedWidth(Math.min(2000, width + 1));
+                          setCopied(false);
+                        }}
+                      >
+                        <span class="step-up" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Decrease width"
+                        disabled={width <= 1}
+                        onClick={() => {
+                          setEmbedWidth(Math.max(1, width - 1));
+                          setCopied(false);
+                        }}
+                      >
+                        <span class="step-down" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <button
+                class="embed-copy"
+                disabled={!devcard || busy || devcard.uploaded}
+                onClick={copy}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="8" y="8" width="12" height="12" rx="2" />
+                  <path d="M16 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" />
+                </svg>
                 {copied ? "Copied" : "Copy"}
               </button>
             </div>
@@ -389,7 +478,7 @@ function App() {
               {devcard?.uploaded
                 ? "Uploaded logos are included in downloads only."
                 : devcard
-                  ? devcard.markdown
+                  ? embedCode
                   : "—"}
             </code>
           </div>
