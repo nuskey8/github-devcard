@@ -360,7 +360,7 @@ export function renderDevcard(
               maximumFractionDigits: 1,
             }).format(value);
       const fontSize = Math.min(
-        landscape ? 26 : 24,
+        compact ? (landscape ? 24 : 22) : landscape ? 26 : 24,
         (cellWidth - (compact ? 16 : 56)) / Math.max(typography.width(number, 1, true), 1),
       );
       if (compact) {
