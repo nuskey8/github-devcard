@@ -453,13 +453,14 @@ fieldset {
 .empty-card {
   width: min(100%, 380px);
   height: auto;
-  aspect-ratio: 2/3;
-  border-radius: 10px;
+  aspect-ratio: 600/915;
+  border-radius: 2.666667% / 1.748634%;
+  box-shadow: 0 10px 30px #9e493e20;
+}
+.empty-card {
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--ink) 20%, transparent),
     0 10px 30px #9e493e20;
-}
-.empty-card {
   background: var(--paper);
   padding: 32px;
   display: flex;
@@ -869,4 +870,5 @@ main.about-page {
   width: 100%;
   max-width: 570px;
   aspect-ratio: 91/55;
+  border-radius: 1.758242% / 2.909091%;
 }

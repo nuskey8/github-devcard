@@ -386,5 +386,7 @@ export function renderDevcard(
   ${metrics.length ? `<g id="stats" transform="translate(${geometry.statsX} ${geometry.statsY})"><rect width="${statsWidth}" height="${compact ? 64 : 40}" rx="8" fill="none" stroke="${t.line}" stroke-width="2"/>${statItems}</g>` : ""}
   <g id="brand-logo">${logo ? `<image href="${e(logo)}" x="${geometry.logoX}" y="${geometry.logoY}" width="64" height="40" preserveAspectRatio="xMidYMid meet"/>` : `<g transform="translate(${geometry.logoX + (landscape ? 6.4 : 0)} ${geometry.logoY + (landscape ? 4 : 0)})${landscape ? " scale(0.8)" : ""}">${renderCardMark(t.foreground, t.background)}</g>`}</g>
   ${typography.text(`GitHub DevCard / Member since ${year}`, 44, geometry.footerY, 18, { spacing: 0.5, fill: t.muted })}${typography.text(`NO. ${user.id}`, width - 44, geometry.footerY, 18, { anchor: "end", fill: t.muted })}
-  </g></svg>`;
+  </g>
+  <rect id="card-border" x="1" y="1" width="${width - 2}" height="${height - 2}" rx="15" fill="none" stroke="${t.line}" stroke-width="2"/>
+  </svg>`;
 }
